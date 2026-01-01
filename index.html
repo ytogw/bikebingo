@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>5×5 ビンゴジェネレーター</title>
+  <style>
+    body{font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; padding:20px; max-width:980px; margin:0 auto;}
+    h1{font-size:1.2rem}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+    .inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+    .inputs input{width:100%;box-sizing:border-box;padding:8px}
+    .buttons{display:flex;gap:8px}
+    button{padding:8px 12px;border-radius:6px;border:1px solid #888;background:#f3f3f3;cursor:pointer}
+    button:active{transform:translateY(1px)}
+    .board{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:16px}
+    .cell{min-height:64px;display:flex;align-items:center;justify-content:center;padding:8px;border-radius:8px;border:1px solid #ccc;background:#fff;text-align:center;user-select:none}
+    .cell.free{background:linear-gradient(135deg,#ffe9b3,#ffd67a);border-color:#f0a500}
+    .small{font-size:0.9rem;color:#555}
+    .note{font-size:0.85rem;color:#666;margin-top:8px}
+    @media (max-width:600px){.inputs{grid-template-columns:repeat(2,1fr)}.cell{min-height:56px;padding:6px}}
+  </style>
+</head>
+<body>
+  <h1>5×5 ビンゴジェネレーター</h1>
+  <p class="small">24個の項目を入力して「作成」を押すと、5×5（中央はFREE）にランダム配置します。生成したビンゴカードは画像としてダウンロードできます。</p>
+
+  <div class="inputs" id="inputs-container"></div>
+
+  <div class="controls">
+    <div class="buttons">
+      <button id="createBtn">作成</button>
+      <button id="clearAllBtn">保存データを消去</button>
+      <button id="downloadBtn">画像としてダウンロード</button>
+    </div>
+  </div>
+
+  <div class="board" id="board"></div>
+  <div class="note">※FREEマスは中央（3行3列）です。</div>
+
+  <script>
+    const KEY_LAYOUT = 'bingo_layout_v2';
+    const KEY_INPUTS = 'bingo_inputs_v2';
+
+    const DEFAULT_ITEMS = [
+      '温泉','ビーナスライン','夫婦ツーリング','3人以上のマスツーリング','道の駅','伊豆','箱根','道志','奥多摩','ダム','海沿い','宿泊','ラーメン','海の幸','アニメ聖地','試乗','イベント参加','寺社参拝','有料施設','展望台','牧場','国道全線走破','SAメシ','ギア新調'
+    ];
+
+    const inputsContainer = document.getElementById('inputs-container');
+    const boardEl = document.getElementById('board');
+    const createBtn = document.getElementById('createBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    // 入力欄生成
+    for(let i=0;i<24;i++){
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = `項目 ${i+1}`;
+      const saved = JSON.parse(localStorage.getItem(KEY_INPUTS) || '[]');
+      input.value = saved[i] || DEFAULT_ITEMS[i] || '';
+      input.addEventListener('input', ()=>saveInputs());
+      inputsContainer.appendChild(input);
+    }
+
+    // 5×5 マス生成
+    for(let i=0;i<25;i++){
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if(i===12){ cell.classList.add('free'); cell.innerHTML = '<strong>FREE</strong>'; }
+      boardEl.appendChild(cell);
+    }
+
+    function shuffle(arr){
+      for(let i=arr.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]]=[arr[j],arr[i]];
+      }
+    }
+
+    function saveInputs(){
+      const values = Array.from(inputsContainer.querySelectorAll('input')).map(i=>i.value.trim());
+      localStorage.setItem(KEY_INPUTS, JSON.stringify(values));
+    }
+
+    function loadLayout(){
+      const raw = localStorage.getItem(KEY_LAYOUT);
+      return raw ? JSON.parse(raw) : null;
+    }
+
+    function render(){
+      const layout = loadLayout();
+      if(!layout) return;
+      const cells = boardEl.querySelectorAll('.cell');
+      cells.forEach((cell,i)=>{
+        if(i===12){ cell.innerHTML = '<strong>FREE</strong>'; }
+        else{ cell.textContent = layout[i]; }
+      });
+    }
+
+    createBtn.addEventListener('click', ()=>{
+      const items = Array.from(inputsContainer.querySelectorAll('input')).map(i=>i.value.trim());
+      if(items.length!==24) return;
+      shuffle(items);
+      items.splice(12,0,'FREE');
+      localStorage.setItem(KEY_LAYOUT, JSON.stringify(items));
+      saveInputs();
+      render();
+    });
+
+    clearAllBtn.addEventListener('click', ()=>{
+      if(!confirm('保存された配置と入力内容を削除します。よろしいですか？')) return;
+      localStorage.removeItem(KEY_LAYOUT);
+      localStorage.removeItem(KEY_INPUTS);
+      location.reload();
+    });
+
+    downloadBtn.addEventListener('click', ()=>{
+      const layout = loadLayout();
+      if(!layout){ alert('先にビンゴを作成してください'); return; }
+      downloadImage(layout);
+    });
+
+    function downloadImage(layout){
+      const size = 500;
+      const cell = size/5;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // 背景
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0,0,size,size);
+
+      // 枠線設定
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+
+      // 文字設定（★重要）
+      ctx.fillStyle = '#000000';
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      for(let r=0;r<5;r++){
+        for(let c=0;c<5;c++){
+          const x=c*cell, y=r*cell;
+          ctx.strokeRect(x,y,cell,cell);
+          const idx=r*5+c;
+          const rawText = (idx===12) ? 'FREE' : (layout[idx] || '');
+          wrapText(ctx, String(rawText), x+cell/2, y+cell/2, cell-10, 18);
+        }
+      }
+
+      const a=document.createElement('a');
+      a.href=canvas.toDataURL('image/png');
+      a.download='bingo_card.png';
+      a.click();
+    }
+
+    function wrapText(ctx,text,x,y,maxWidth,lineHeight){
+      const chars=text.split('');
+      let line='',lines=[];
+      chars.forEach(ch=>{
+        const test=line+ch;
+        if(ctx.measureText(test).width>maxWidth && line){ lines.push(line); line=ch; }
+        else{ line=test; }
+      });
+      lines.push(line);
+      const startY=y-(lines.length-1)*lineHeight/2;
+      lines.forEach((l,i)=>ctx.fillText(l,x,startY+i*lineHeight));
+    }
+
+    // 初期表示
+    render();
+  </script>
+</body>
+</html>
